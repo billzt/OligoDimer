@@ -25,6 +25,13 @@ def transform_degenerate(seq):
 		seq = seq.replace(base, basesub[base])
 	return seq
 
+def judge_hairpin(oligo_input):
+    oligo = oligo_input['oligo']
+    min_Tm = min(oligo['Tm'], oligo_input['min_Tm'])
+    hairpin = primer3.calcHairpin(oligo['seq'], output_structure=True)
+    if hairpin.tm > min_Tm:
+        return([oligo, oligo, round(hairpin.tm, 2), hairpin.ascii_structure])
+
 def judge_two_oligo(oligo_pair):
 
     oligo_1 = oligo_pair['oligo_1']
@@ -40,10 +47,9 @@ def judge_two_oligo(oligo_pair):
 
 def get_dimers(oligo_seqs, min_Tm=35, cpu=2, monitor=True):
 
-    # make sure more than two sites has primers
     oligo_seqs = oligo_seqs.strip().splitlines()
-    if len(oligo_seqs)<2:
-        return {'error': f'Only 1 oligo sequence'}
+    if len(oligo_seqs)<1:
+        return {'error': f'No oligo sequences'}
     
     loaded_ids = {}
 
@@ -68,11 +74,19 @@ def get_dimers(oligo_seqs, min_Tm=35, cpu=2, monitor=True):
     pool = mp.Pool(processes=cpu)
     multi_res = []
     all_tasks_num = 0
+
+    # dimer
     for i in range(0, len(oligo_objs)):
-        for j in range(i+1, len(oligo_objs)):
+        for j in range(i, len(oligo_objs)):
             oligo_pair = {'oligo_1':oligo_objs[i], 'oligo_2':oligo_objs[j], 'min_Tm':min_Tm}
             all_tasks_num += 1
             multi_res.append(pool.apply_async(judge_two_oligo, (oligo_pair,)))
+
+    # hairpin
+    for i in range(0, len(oligo_objs)):
+        oligo_input = {'oligo': oligo_objs[i], 'min_Tm':min_Tm}
+        all_tasks_num += 1
+        multi_res.append(pool.apply_async(judge_hairpin, (oligo_input,)))
 
     # monitor
     if monitor is True:
